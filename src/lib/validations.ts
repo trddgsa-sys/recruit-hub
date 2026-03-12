@@ -101,6 +101,11 @@ export const paginationSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 })
 
+// Aliases used by API routes
+export const UpdateStageSchema = updateApplicationStageSchema
+export const CandidateProfileSchema = updateCandidateProfileSchema
+export const CreateApplicationSchema = createApplicationSchema
+
 export type RegisterInput = z.infer<typeof registerSchema>
 export type LoginInput = z.infer<typeof loginSchema>
 export type CreateCompanyInput = z.infer<typeof createCompanySchema>

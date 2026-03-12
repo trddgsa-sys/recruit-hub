@@ -125,3 +125,16 @@ export function isRecruiter(role: UserRole) {
 export function isCandidate(role: UserRole) {
   return role === UserRole.CANDIDATE
 }
+
+// Convenience role-guard helpers
+export async function requireAdmin() {
+  return requireRole(UserRole.ADMIN)
+}
+
+export async function requireRecruiter() {
+  return requireRole(UserRole.RECRUITER, UserRole.ADMIN)
+}
+
+export async function requireCandidate() {
+  return requireRole(UserRole.CANDIDATE)
+}

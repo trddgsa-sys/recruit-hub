@@ -75,3 +75,17 @@ export function stageColor(stage: string): string {
 export function stageLabel(stage: string): string {
   return stage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
+
+// Alias used by JobCard
+export function formatSalary(min: number | null | undefined, max: number | null | undefined): string {
+  return formatSalaryRange(min, max)
+}
+
+// API response helpers
+export function apiResponse<T>(data: T, meta?: Record<string, unknown>) {
+  return Response.json({ success: true, data, error: null, ...(meta ? { meta } : {}) })
+}
+
+export function apiError(message: string, status = 400) {
+  return Response.json({ success: false, data: null, error: message }, { status })
+}
