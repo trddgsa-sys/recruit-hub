@@ -1,0 +1,215 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  RECRUITER
+  CANDIDATE
+}
+
+enum LocationType {
+  REMOTE
+  HYBRID
+  ONSITE
+}
+
+enum JobStatus {
+  ACTIVE
+  PAUSED
+  CLOSED
+  FEATURED
+}
+
+enum ApplicationStage {
+  APPLIED
+  UNDER_REVIEW
+  SHORTLISTED
+  INTERVIEW_SCHEDULED
+  OFFER_SENT
+  HIRED
+  REJECTED
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         UserRole  @default(CANDIDATE)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  recruiterProfile  RecruiterProfile?
+  candidateProfile  CandidateProfile?
+  notifications     Notification[]
+  referralCodes     ReferralCode[]
+  referralUsages    ReferralUsage[]
+  candidateApps     Application[]     @relation("CandidateApplications")
+  recruiterApps     Application[]     @relation("RecruiterApplications")
+  savedJobs         SavedJob[]
+
+  @@index([email])
+  @@index([role])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model RecruiterProfile {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  recruiterId    String   @unique @default(uuid())
+  bio            String?
+  totalReferrals Int      @default(0)
+  totalHires     Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("recruiter_profiles")
+}
+
+model CandidateProfile {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  phone          String?
+  resumeUrl      String?
+  skills         String[]
+  experience     String?
+  education      String?
+  portfolioLinks String[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("candidate_profiles")
+}
+
+model Company {
+  id          String    @id @default(uuid())
+  name        String
+  logo        String?
+  website     String?
+  description String?
+  industry    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  jobs Job[]
+
+  @@map("companies")
+}
+
+model Job {
+  id               String       @id @default(uuid())
+  title            String
+  companyId        String
+  location         String
+  locationType     LocationType @default(ONSITE)
+  salaryMin        Int?
+  salaryMax        Int?
+  shortDescription String
+  fullDescription  String
+  requirements     String
+  responsibilities String
+  experienceLevel  String
+  skillTags        String[]
+  deadline         DateTime?
+  status           JobStatus    @default(ACTIVE)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  applications Application[]
+  savedJobs    SavedJob[]
+
+  @@index([status])
+  @@index([companyId])
+  @@map("jobs")
+}
+
+model ReferralCode {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  recruiterId String
+  usageLimit  Int       @default(10)
+  usageCount  Int       @default(0)
+  expiresAt   DateTime?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  user   User            @relation(fields: [recruiterId], references: [id], onDelete: Cascade)
+  usages ReferralUsage[]
+
+  @@index([recruiterId])
+  @@map("referral_codes")
+}
+
+model ReferralUsage {
+  id          String   @id @default(uuid())
+  codeId      String
+  candidateId String
+  usedAt      DateTime @default(now())
+
+  code      ReferralCode @relation(fields: [codeId], references: [id], onDelete: Cascade)
+  candidate User         @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([codeId, candidateId])
+  @@map("referral_usages")
+}
+
+model Application {
+  id          String           @id @default(uuid())
+  jobId       String
+  candidateId String
+  recruiterId String?
+  stage       ApplicationStage @default(APPLIED)
+  notes       String?
+  resumeUrl   String?
+  appliedAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  job       Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidate User  @relation("CandidateApplications", fields: [candidateId], references: [id], onDelete: Cascade)
+  recruiter User? @relation("RecruiterApplications", fields: [recruiterId], references: [id])
+
+  @@unique([jobId, candidateId])
+  @@index([stage])
+  @@map("applications")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model SavedJob {
+  id          String   @id @default(uuid())
+  candidateId String
+  jobId       String
+  createdAt   DateTime @default(now())
+
+  candidate User @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job       Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, jobId])
+  @@map("saved_jobs")
+}
