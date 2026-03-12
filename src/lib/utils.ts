@@ -21,6 +21,11 @@ export function formatSalaryRange(min: number | null | undefined, max: number | 
   return `Up to ${formatCurrency(max)}`
 }
 
+// Alias used by components
+export function formatSalary(min: number | null | undefined, max: number | null | undefined): string {
+  return formatSalaryRange(min, max)
+}
+
 export function formatDate(date: Date | string | null | undefined): string {
   if (!date) return 'N/A'
   return new Intl.DateTimeFormat('en-US', {
@@ -34,11 +39,9 @@ export function formatRelativeTime(date: Date | string): string {
   const now = new Date()
   const then = new Date(date)
   const diffMs = now.getTime() - then.getTime()
-  const diffSecs = Math.floor(diffMs / 1000)
-  const diffMins = Math.floor(diffSecs / 60)
-  const diffHours = Math.floor(diffMins / 60)
-  const diffDays = Math.floor(diffHours / 24)
-
+  const diffDays = Math.floor(diffMs / 86400000)
+  const diffHours = Math.floor((diffMs % 86400000) / 3600000)
+  const diffMins = Math.floor((diffMs % 3600000) / 60000)
   if (diffDays > 30) return formatDate(date)
   if (diffDays > 0) return `${diffDays}d ago`
   if (diffHours > 0) return `${diffHours}h ago`
@@ -76,16 +79,14 @@ export function stageLabel(stage: string): string {
   return stage.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-// Alias used by JobCard
-export function formatSalary(min: number | null | undefined, max: number | null | undefined): string {
-  return formatSalaryRange(min, max)
+// API response helpers — used by all API routes
+export function apiResponse<T>(data: T, status = 200, meta?: Record<string, unknown>): Response {
+  return Response.json(
+    { success: true, data, error: null, ...(meta ? { meta } : {}) },
+    { status }
+  )
 }
 
-// API response helpers
-export function apiResponse<T>(data: T, meta?: Record<string, unknown>) {
-  return Response.json({ success: true, data, error: null, ...(meta ? { meta } : {}) })
-}
-
-export function apiError(message: string, status = 400) {
+export function apiError(message: string, status = 400): Response {
   return Response.json({ success: false, data: null, error: message }, { status })
 }

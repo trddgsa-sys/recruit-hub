@@ -47,14 +47,16 @@ export const updateJobSchema = createJobSchema.partial()
 
 export const jobFiltersSchema = z.object({
   search: z.string().optional(),
-  companyId: z.string().uuid().optional(),
+  location: z.string().optional(),
+  companyId: z.string().optional(),
   locationType: z.nativeEnum(LocationType).optional(),
   status: z.nativeEnum(JobStatus).optional(),
   experienceLevel: z.string().optional(),
+  skills: z.string().optional(),
   salaryMin: z.coerce.number().optional(),
   salaryMax: z.coerce.number().optional(),
   page: z.coerce.number().int().positive().default(1),
-  limit: z.coerce.number().int().positive().max(50).default(10),
+  limit: z.coerce.number().int().positive().max(100).default(10),
 })
 
 // Referral code schemas
@@ -101,10 +103,20 @@ export const paginationSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 })
 
-// Aliases used by API routes
+// Aliases used by API routes (PascalCase variants)
 export const UpdateStageSchema = updateApplicationStageSchema
 export const CandidateProfileSchema = updateCandidateProfileSchema
 export const CreateApplicationSchema = createApplicationSchema
+export const CreateCompanySchema = createCompanySchema
+export const UpdateCompanySchema = updateCompanySchema
+export const CreateJobSchema = createJobSchema
+export const UpdateJobSchema = updateJobSchema
+export const JobFiltersSchema = jobFiltersSchema
+export const PaginationSchema = paginationSchema
+export const GenerateReferralCodeSchema = generateReferralCodeSchema
+export const ValidateReferralCodeSchema = validateReferralCodeSchema
+export const RegisterSchema = registerSchema
+export const LoginSchema = loginSchema
 
 export type RegisterInput = z.infer<typeof registerSchema>
 export type LoginInput = z.infer<typeof loginSchema>

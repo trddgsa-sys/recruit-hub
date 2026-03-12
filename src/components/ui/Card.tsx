@@ -5,15 +5,19 @@ interface CardProps {
   children: React.ReactNode;
   className?: string;
   hover?: boolean;
+  onClick?: () => void;
 }
 
-export function Card({ children, className, hover }: CardProps) {
+export function Card({ children, className, hover, onClick }: CardProps) {
   return (
-    <div className={cn(
-      'rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 shadow-sm',
-      hover && 'transition-shadow hover:shadow-md',
-      className
-    )}>
+    <div
+      className={cn(
+        'rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 shadow-sm',
+        hover && 'transition-shadow hover:shadow-md',
+        className
+      )}
+      onClick={onClick}
+    >
       {children}
     </div>
   );

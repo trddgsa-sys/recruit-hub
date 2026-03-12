@@ -1,4 +1,4 @@
-import { NextAuthOptions, getServerSession as nextGetServerSession } from 'next-auth'
+import { NextAuthOptions, getServerSession as nextGetServerSession, Session } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { compare } from 'bcryptjs'
 import { prisma } from '@/lib/db'
@@ -31,7 +31,7 @@ declare module 'next-auth/jwt' {
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 30 * 24 * 60 * 60,
   },
   pages: {
     signIn: '/login',
@@ -50,44 +50,25 @@ export const authOptions: NextAuthOptions = {
         }
 
         const user = await prisma.user.findFirst({
-          where: {
-            email: credentials.email,
-            deletedAt: null,
-          },
+          where: { email: credentials.email, deletedAt: null },
         })
 
-        if (!user) {
-          throw new Error('Invalid email or password')
-        }
+        if (!user) throw new Error('Invalid email or password')
 
         const isPasswordValid = await compare(credentials.password, user.passwordHash)
+        if (!isPasswordValid) throw new Error('Invalid email or password')
 
-        if (!isPasswordValid) {
-          throw new Error('Invalid email or password')
-        }
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        }
+        return { id: user.id, email: user.email, name: user.name, role: user.role }
       },
     }),
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id
-        token.role = user.role
-      }
+      if (user) { token.id = user.id; token.role = user.role }
       return token
     },
     async session({ session, token }) {
-      if (token) {
-        session.user.id = token.id
-        session.user.role = token.role
-      }
+      if (token) { session.user.id = token.id; session.user.role = token.role }
       return session
     },
   },
@@ -98,43 +79,51 @@ export async function getServerSession() {
   return nextGetServerSession(authOptions)
 }
 
-export async function requireAuth() {
+type AuthResult =
+  | { session: Session; error: null }
+  | { session: null; error: Response }
+
+function forbidden(): AuthResult {
+  return {
+    session: null,
+    error: Response.json({ success: false, data: null, error: 'Forbidden' }, { status: 403 }),
+  }
+}
+
+function unauthorized(): AuthResult {
+  return {
+    session: null,
+    error: Response.json({ success: false, data: null, error: 'Unauthorized' }, { status: 401 }),
+  }
+}
+
+export async function requireAuth(): Promise<AuthResult> {
   const session = await getServerSession()
-  if (!session) {
-    throw new Error('Unauthorized')
-  }
-  return session
+  if (!session) return unauthorized()
+  return { session, error: null }
 }
 
-export async function requireRole(...roles: UserRole[]) {
-  const session = await requireAuth()
-  if (!roles.includes(session.user.role)) {
-    throw new Error('Forbidden')
-  }
-  return session
+export async function requireAdmin(): Promise<AuthResult> {
+  const result = await requireAuth()
+  if (result.error) return result
+  if (result.session.user.role !== UserRole.ADMIN) return forbidden()
+  return result
 }
 
-export function isAdmin(role: UserRole) {
-  return role === UserRole.ADMIN
+export async function requireRecruiter(): Promise<AuthResult> {
+  const result = await requireAuth()
+  if (result.error) return result
+  if (![UserRole.RECRUITER, UserRole.ADMIN].includes(result.session.user.role)) return forbidden()
+  return result
 }
 
-export function isRecruiter(role: UserRole) {
-  return role === UserRole.RECRUITER
+export async function requireCandidate(): Promise<AuthResult> {
+  const result = await requireAuth()
+  if (result.error) return result
+  if (result.session.user.role !== UserRole.CANDIDATE) return forbidden()
+  return result
 }
 
-export function isCandidate(role: UserRole) {
-  return role === UserRole.CANDIDATE
-}
-
-// Convenience role-guard helpers
-export async function requireAdmin() {
-  return requireRole(UserRole.ADMIN)
-}
-
-export async function requireRecruiter() {
-  return requireRole(UserRole.RECRUITER, UserRole.ADMIN)
-}
-
-export async function requireCandidate() {
-  return requireRole(UserRole.CANDIDATE)
-}
+export function isAdmin(role: UserRole) { return role === UserRole.ADMIN }
+export function isRecruiter(role: UserRole) { return role === UserRole.RECRUITER }
+export function isCandidate(role: UserRole) { return role === UserRole.CANDIDATE }
