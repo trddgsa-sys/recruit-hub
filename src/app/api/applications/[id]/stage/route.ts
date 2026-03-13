@@ -20,35 +20,33 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       data: { stage: parsed.data.stage, notes: parsed.data.notes },
       include: {
         job: { include: { company: true } },
-        candidate: { include: { user: { select: { name: true, email: true } } } },
+        candidate: { select: { id: true, name: true, email: true } },
       },
     });
 
     // Notify candidate
     await prisma.notification.create({
       data: {
-        userId: application.candidate.user.email
-          ? (await prisma.user.findUnique({ where: { email: application.candidate.user.email } }))!.id
-          : '',
+        userId: application.candidate.id,
         type: 'STAGE_CHANGED',
         message: `Your application for ${application.job.title} moved to ${parsed.data.stage.replace(/_/g, ' ')}`,
       },
     });
 
-    // Email
+    // Send email (non-blocking)
     try {
       if (parsed.data.stage === ApplicationStage.INTERVIEW_SCHEDULED) {
         await sendInterviewInvite({
-          to: application.candidate.user.email!,
-          candidateName: application.candidate.user.name,
+          to: application.candidate.email,
+          candidateName: application.candidate.name,
           jobTitle: application.job.title,
           companyName: application.job.company.name,
           interviewDetails: parsed.data.notes,
         });
       } else {
         await sendStageChanged({
-          to: application.candidate.user.email!,
-          candidateName: application.candidate.user.name,
+          to: application.candidate.email,
+          candidateName: application.candidate.name,
           jobTitle: application.job.title,
           companyName: application.job.company.name,
           newStage: parsed.data.stage,

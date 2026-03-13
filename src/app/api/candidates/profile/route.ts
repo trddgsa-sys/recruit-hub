@@ -12,13 +12,28 @@ export async function GET(_req: NextRequest) {
     const profile = await prisma.candidateProfile.findUnique({
       where: { userId: session!.user.id },
       include: {
-        user: { select: { id: true, name: true, email: true } },
-        _count: { select: { applications: true, savedJobs: true } },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            _count: { select: { candidateApps: true, savedJobs: true } },
+          },
+        },
       },
     });
     if (!profile) return apiError('Profile not found', 404);
-    return apiResponse(profile);
+
+    // Flatten _count to top-level for frontend compatibility
+    return apiResponse({
+      ...profile,
+      _count: {
+        applications: profile.user._count.candidateApps,
+        savedJobs: profile.user._count.savedJobs,
+      },
+    });
   } catch (err) {
+    console.error('[candidates/profile GET]', err);
     return apiError('Internal server error', 500);
   }
 }
@@ -33,20 +48,21 @@ export async function PUT(req: NextRequest) {
     const parsed = CandidateProfileSchema.safeParse(body);
     if (!parsed.success) return apiError(parsed.error.errors[0].message, 400);
 
-    const { name, ...profileData } = parsed.data;
+    const { name, ...profileData } = parsed.data as typeof parsed.data & { name?: string };
 
-    // Update user name if provided
     if (name) {
       await prisma.user.update({ where: { id: session!.user.id }, data: { name } });
     }
 
-    const profile = await prisma.candidateProfile.update({
+    const profile = await prisma.candidateProfile.upsert({
       where: { userId: session!.user.id },
-      data: profileData,
+      update: profileData,
+      create: { userId: session!.user.id, ...profileData },
     });
 
     return apiResponse(profile);
   } catch (err) {
+    console.error('[candidates/profile PUT]', err);
     return apiError('Internal server error', 500);
   }
 }
