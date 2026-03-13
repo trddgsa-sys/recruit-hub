@@ -10,7 +10,7 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession()
-    if (!session || ![UserRole.RECRUITER, UserRole.ADMIN].includes(session.user.role)) {
+    if (!session || !([UserRole.RECRUITER, UserRole.ADMIN] as string[]).includes(session.user.role)) {
       return NextResponse.json<ApiResponse>(
         { success: false, error: 'Unauthorized' },
         { status: 403 }
