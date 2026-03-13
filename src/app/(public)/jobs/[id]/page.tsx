@@ -22,11 +22,8 @@ export default async function JobDetailPage({ params }: PageProps) {
   if (session?.user?.role === 'ADMIN' || session?.user?.role === 'RECRUITER') {
     isUnlocked = true;
   } else if (session?.user?.role === 'CANDIDATE') {
-    const profile = await prisma.candidateProfile.findUnique({ where: { userId: session.user.id } });
-    if (profile) {
-      const usage = await prisma.referralUsage.findFirst({ where: { candidateId: profile.id } });
-      isUnlocked = !!usage;
-    }
+    const usage = await prisma.referralUsage.findFirst({ where: { candidateId: session.user.id } });
+    isUnlocked = !!usage;
   }
 
   return (

@@ -19,15 +19,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     if (session?.user?.role === 'ADMIN' || session?.user?.role === 'RECRUITER') {
       isUnlocked = true;
     } else if (session?.user?.role === 'CANDIDATE') {
-      const profile = await prisma.candidateProfile.findUnique({
-        where: { userId: session.user.id },
+      const usage = await prisma.referralUsage.findFirst({
+        where: { candidateId: session.user.id },
       });
-      if (profile) {
-        const usage = await prisma.referralUsage.findFirst({
-          where: { candidateId: profile.id },
-        });
-        isUnlocked = !!usage;
-      }
+      isUnlocked = !!usage;
     }
 
     // Return preview only if not unlocked
