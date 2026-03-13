@@ -178,11 +178,10 @@ export async function POST(request: NextRequest) {
 
     // Send confirmation email (non-blocking)
     sendApplicationSubmitted({
-      candidateEmail: session.user.email,
+      to: session.user.email,
       candidateName: session.user.name,
       jobTitle: job.title,
       companyName: job.company.name,
-      applicationId: application.id,
     }).catch((err) => console.error('Email failed:', err))
 
     return NextResponse.json<ApiResponse>(
