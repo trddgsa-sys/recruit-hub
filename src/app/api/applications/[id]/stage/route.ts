@@ -41,7 +41,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           candidateName: application.candidate.name,
           jobTitle: application.job.title,
           companyName: application.job.company.name,
-          interviewDetails: parsed.data.notes,
+          interviewDetails: parsed.data.notes ?? undefined,
         });
       } else {
         await sendStageChanged({
