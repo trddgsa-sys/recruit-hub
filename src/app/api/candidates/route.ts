@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const { session, error } = await requireAuth();
   if (error) return error;
 
-  if (![UserRole.ADMIN, UserRole.RECRUITER].includes(session.user.role)) {
+  if (!([UserRole.ADMIN, UserRole.RECRUITER] as string[]).includes(session.user.role)) {
     return apiError('Forbidden', 403);
   }
 
