@@ -12,8 +12,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       where: { id: params.id },
       include: {
         job: { include: { company: true } },
-        candidate: { include: { user: { select: { name: true, email: true } } } },
-        recruiterProfile: { include: { user: { select: { name: true, email: true } } } },
+        candidate: { select: { id: true, name: true, email: true, candidateProfile: true } },
+        recruiter: { select: { id: true, name: true, email: true } },
       },
     });
 
@@ -21,9 +21,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
     // Access control: candidate can only see their own
     const role = session!.user.role;
-    if (role === 'CANDIDATE') {
-      const profile = await prisma.candidateProfile.findUnique({ where: { userId: session!.user.id } });
-      if (application.candidateId !== profile?.id) return apiError('Forbidden', 403);
+    if (role === 'CANDIDATE' && application.candidateId !== session!.user.id) {
+      return apiError('Forbidden', 403);
     }
 
     return apiResponse(application);

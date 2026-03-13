@@ -16,7 +16,7 @@ interface JobCardProps {
     skillTags: string[];
     status: string;
     isLocked?: boolean;
-    deadline?: string | null;
+    deadline?: Date | string | null;
     company: { name: string; logo?: string | null; industry?: string | null };
     _count?: { applications: number };
   };
