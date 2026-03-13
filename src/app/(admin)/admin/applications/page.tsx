@@ -7,7 +7,7 @@ interface Application {
   id: string;
   stage: string;
   appliedAt: string;
-  candidate: { user: { name: string; email: string } };
+  candidate: { name: string; email: string };
   job: { title: string; company: { name: string } };
 }
 
