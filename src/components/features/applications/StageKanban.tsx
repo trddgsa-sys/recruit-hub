@@ -12,7 +12,7 @@ const ALL_STAGES = [
 interface Application {
   id: string;
   stage: string;
-  candidate: { user: { name: string; email: string } };
+  candidate: { name: string; email: string };
   job: { title: string; company: { name: string } };
   appliedAt: string;
 }
@@ -51,7 +51,7 @@ export function StageKanban({ applications, onStageChange }: StageKanbanProps) {
                     key={app.id}
                     className="rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-3 shadow-sm"
                   >
-                    <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{app.candidate.user.name}</p>
+                    <p className="font-medium text-sm text-gray-900 dark:text-gray-100">{app.candidate.name}</p>
                     <p className="text-xs text-gray-500 truncate">{app.job.title}</p>
                     <p className="text-xs text-gray-400 mt-1">{new Date(app.appliedAt).toLocaleDateString()}</p>
                     <div className="mt-2">

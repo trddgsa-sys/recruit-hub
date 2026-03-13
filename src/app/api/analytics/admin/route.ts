@@ -1,122 +1,92 @@
-import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
-import { getServerSession } from '@/lib/auth'
-import { ApiResponse } from '@/types'
-import { UserRole } from '@prisma/client'
+import { NextRequest } from 'next/server';
+import { prisma } from '@/lib/db';
+import { requireAdmin } from '@/lib/auth';
+import { apiResponse, apiError } from '@/lib/utils';
+import { UserRole } from '@prisma/client';
 
-export async function GET() {
+export async function GET(_req: NextRequest) {
+  const { error } = await requireAdmin();
+  if (error) return error;
+
   try {
-    const session = await getServerSession()
-    if (!session || session.user.role !== UserRole.ADMIN) {
-      return NextResponse.json<ApiResponse>(
-        { success: false, error: 'Unauthorized' },
-        { status: 403 }
-      )
-    }
+    const [totalJobs, totalCompanies, totalRecruiters, totalCandidates, totalApplications, hiredCount] =
+      await Promise.all([
+        prisma.job.count({ where: { deletedAt: null } }),
+        prisma.company.count({ where: { deletedAt: null } }),
+        prisma.user.count({ where: { role: UserRole.RECRUITER, deletedAt: null } }),
+        prisma.user.count({ where: { role: UserRole.CANDIDATE, deletedAt: null } }),
+        prisma.application.count(),
+        prisma.application.count({ where: { stage: 'HIRED' } }),
+      ]);
 
-    const [
-      totalUsers,
-      totalCandidates,
-      totalRecruiters,
-      totalCompanies,
-      totalJobs,
-      activeJobs,
-      totalApplications,
-      hiredCount,
-      applicationsByStageRaw,
-      recentApplications,
-    ] = await Promise.all([
-      prisma.user.count({ where: { deletedAt: null } }),
-      prisma.user.count({ where: { role: UserRole.CANDIDATE, deletedAt: null } }),
-      prisma.user.count({ where: { role: UserRole.RECRUITER, deletedAt: null } }),
-      prisma.company.count(),
-      prisma.job.count(),
-      prisma.job.count({ where: { status: { in: ['ACTIVE', 'FEATURED'] } } }),
-      prisma.application.count(),
-      prisma.application.count({ where: { stage: 'HIRED' } }),
-      prisma.application.groupBy({
-        by: ['stage'],
-        _count: { stage: true },
-      }),
-      prisma.application.findMany({
-        take: 10,
-        orderBy: { appliedAt: 'desc' },
-        include: {
-          job: { include: { company: { select: { name: true } } } },
-          candidate: { select: { name: true, email: true } },
-        },
-      }),
-    ])
+    const conversionRate = totalApplications > 0
+      ? Math.round((hiredCount / totalApplications) * 100)
+      : 0;
 
-    const applicationsByStage = applicationsByStageRaw.reduce(
-      (acc, item) => {
-        acc[item.stage] = item._count.stage
-        return acc
-      },
-      {} as Record<string, number>
-    )
+    // Applications per job (top 10)
+    const jobsWithApps = await prisma.job.findMany({
+      where: { deletedAt: null },
+      select: { title: true, _count: { select: { applications: true } } },
+      orderBy: { applications: { _count: 'desc' } },
+      take: 10,
+    });
+    const applicationsPerJob = jobsWithApps.map((j) => ({
+      jobTitle: j.title,
+      count: j._count.applications,
+    }));
 
-    // Monthly applications for the last 6 months
-    const sixMonthsAgo = new Date()
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
+    // Pipeline stats
+    const stageGroups = await prisma.application.groupBy({
+      by: ['stage'],
+      _count: { stage: true },
+    });
+    const pipelineStats = stageGroups.map((s) => ({
+      stage: s.stage,
+      count: s._count.stage,
+    }));
 
-    const monthlyApplicationsRaw = await prisma.application.findMany({
-      where: { appliedAt: { gte: sixMonthsAgo } },
+    // Top recruiters
+    const topRecruitersRaw = await prisma.recruiterProfile.findMany({
+      include: { user: { select: { name: true } } },
+      orderBy: { totalReferrals: 'desc' },
+      take: 10,
+    });
+    const topRecruiters = topRecruitersRaw.map((r) => ({
+      name: r.user.name,
+      referrals: r.totalReferrals,
+      hires: r.totalHires,
+    }));
+
+    // Hires over time (last 6 months)
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const hiredApps = await prisma.application.findMany({
+      where: { stage: 'HIRED', appliedAt: { gte: sixMonthsAgo } },
       select: { appliedAt: true },
-    })
+    });
+    const hiresMap = new Map<string, number>();
+    hiredApps.forEach((a) => {
+      const key = a.appliedAt.toISOString().slice(0, 7);
+      hiresMap.set(key, (hiresMap.get(key) ?? 0) + 1);
+    });
+    const hiresOverTime = Array.from(hiresMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, hires]) => ({ month, hires }));
 
-    const monthlyMap = new Map<string, number>()
-    monthlyApplicationsRaw.forEach((app) => {
-      const key = app.appliedAt.toISOString().slice(0, 7) // YYYY-MM
-      monthlyMap.set(key, (monthlyMap.get(key) || 0) + 1)
-    })
-
-    const monthlyApplications = Array.from(monthlyMap.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([month, count]) => ({ month, count }))
-
-    // Top companies by jobs
-    const topCompaniesRaw = await prisma.company.findMany({
-      include: {
-        _count: { select: { jobs: true } },
-        jobs: {
-          include: {
-            _count: { select: { applications: true } },
-          },
-        },
-      },
-      orderBy: { jobs: { _count: 'desc' } },
-      take: 5,
-    })
-
-    const topCompanies = topCompaniesRaw.map((company) => ({
-      name: company.name,
-      jobCount: company._count.jobs,
-      applicationCount: company.jobs.reduce((sum, job) => sum + job._count.applications, 0),
-    }))
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        totalUsers,
-        totalCandidates,
-        totalRecruiters,
-        totalCompanies,
-        totalJobs,
-        activeJobs,
-        totalApplications,
-        hiredCount,
-        applicationsByStage,
-        monthlyApplications,
-        topCompanies,
-        recentApplications,
-      },
-    })
-  } catch (error) {
-    console.error('Admin analytics GET error:', error)
-    return NextResponse.json<ApiResponse>(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    )
+    return apiResponse({
+      totalJobs,
+      totalCompanies,
+      totalRecruiters,
+      totalCandidates,
+      totalApplications,
+      conversionRate,
+      applicationsPerJob,
+      pipelineStats,
+      topRecruiters,
+      hiresOverTime,
+    });
+  } catch (err) {
+    console.error('[analytics/admin GET]', err);
+    return apiError('Internal server error', 500);
   }
 }

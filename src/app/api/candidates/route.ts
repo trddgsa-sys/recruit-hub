@@ -1,54 +1,47 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
-import { getServerSession } from '@/lib/auth'
-import { paginationSchema } from '@/lib/validations'
-import { ApiResponse } from '@/types'
-import { UserRole } from '@prisma/client'
+import { NextRequest } from 'next/server';
+import { prisma } from '@/lib/db';
+import { requireAuth } from '@/lib/auth';
+import { paginationSchema } from '@/lib/validations';
+import { apiResponse, apiError } from '@/lib/utils';
+import { UserRole, Prisma } from '@prisma/client';
 
 export async function GET(request: NextRequest) {
-  try {
-    const session = await getServerSession()
-    if (!session || ![UserRole.ADMIN, UserRole.RECRUITER].includes(session.user.role)) {
-      return NextResponse.json<ApiResponse>(
-        { success: false, error: 'Unauthorized' },
-        { status: 403 }
-      )
-    }
+  const { session, error } = await requireAuth();
+  if (error) return error;
 
-    const { searchParams } = new URL(request.url)
-    const { page, limit } = paginationSchema.parse({
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
-    })
-    const search = searchParams.get('search') || ''
+  if (![UserRole.ADMIN, UserRole.RECRUITER].includes(session.user.role)) {
+    return apiError('Forbidden', 403);
+  }
 
-    const where: Record<string, unknown> = {
-      role: UserRole.CANDIDATE,
-      deletedAt: null,
-    }
+  const { searchParams } = new URL(request.url);
+  const { page, limit } = paginationSchema.parse({
+    page: searchParams.get('page'),
+    limit: searchParams.get('limit'),
+  });
+  const search = searchParams.get('search') ?? '';
 
-    if (search) {
-      where.OR = [
+  const where: Prisma.UserWhereInput = {
+    role: UserRole.CANDIDATE,
+    deletedAt: null,
+    ...(search && {
+      OR: [
         { name: { contains: search, mode: 'insensitive' } },
         { email: { contains: search, mode: 'insensitive' } },
-      ]
-    }
+      ],
+    }),
+  };
 
-    // Recruiters can only see their referred candidates
-    if (session.user.role === UserRole.RECRUITER) {
-      const referralUsages = await prisma.referralUsage.findMany({
-        where: {
-          code: {
-            recruiterId: session.user.id,
-          },
-        },
-        select: { candidateId: true },
-      })
-      const candidateIds = referralUsages.map((r) => r.candidateId)
-      where.id = { in: candidateIds }
-    }
+  // Recruiters see only their referred candidates
+  if (session.user.role === UserRole.RECRUITER) {
+    const usages = await prisma.referralUsage.findMany({
+      where: { code: { recruiterId: session.user.id } },
+      select: { candidateId: true },
+    });
+    where.id = { in: usages.map((u) => u.candidateId) };
+  }
 
-    const [candidates, total] = await Promise.all([
+  try {
+    const [users, total] = await Promise.all([
       prisma.user.findMany({
         where,
         select: {
@@ -56,43 +49,33 @@ export async function GET(request: NextRequest) {
           name: true,
           email: true,
           createdAt: true,
-          candidateProfile: true,
-          _count: {
-            select: { candidateApps: true },
+          candidateProfile: {
+            select: { phone: true, skills: true, resumeUrl: true, portfolioLinks: true },
           },
+          _count: { select: { candidateApps: true } },
         },
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { createdAt: 'desc' },
       }),
       prisma.user.count({ where }),
-    ])
+    ]);
 
-    // Transform for frontend
-    const items = candidates.map((c) => ({
-      id: c.id,
-      name: c.name,
-      email: c.email,
-      createdAt: c.createdAt,
-      candidateProfile: c.candidateProfile,
-      _count: { applications: c._count.candidateApps },
-    }))
+    // Shape to match frontend Candidate interface
+    const candidates = users.map((u) => ({
+      id: u.id,
+      phone: u.candidateProfile?.phone ?? null,
+      skills: u.candidateProfile?.skills ?? [],
+      resumeUrl: u.candidateProfile?.resumeUrl ?? null,
+      user: { id: u.id, name: u.name, email: u.email, createdAt: u.createdAt.toISOString() },
+      _count: { applications: u._count.candidateApps },
+    }));
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        items,
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    })
-  } catch (error) {
-    console.error('Candidates GET error:', error)
-    return NextResponse.json<ApiResponse>(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    )
+    return apiResponse(candidates, 200, {
+      page, limit, total, totalPages: Math.ceil(total / limit),
+    });
+  } catch (err) {
+    console.error('[candidates GET]', err);
+    return apiError('Internal server error', 500);
   }
 }

@@ -11,7 +11,7 @@ export default function UnlockPage() {
   const router = useRouter();
   const [unlocked, setUnlocked] = useState(false);
 
-  const handleSuccess = (recruiterName: string) => {
+  const handleSuccess = (_recruiterName: string) => {
     setUnlocked(true);
     setTimeout(() => router.push('/jobs'), 2000);
   };

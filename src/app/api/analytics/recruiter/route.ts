@@ -1,110 +1,70 @@
-import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/db'
-import { getServerSession } from '@/lib/auth'
-import { ApiResponse } from '@/types'
-import { UserRole } from '@prisma/client'
+import { NextRequest } from 'next/server';
+import { prisma } from '@/lib/db';
+import { requireRecruiter } from '@/lib/auth';
+import { apiResponse, apiError } from '@/lib/utils';
 
-export async function GET() {
+export async function GET(_req: NextRequest) {
+  const { session, error } = await requireRecruiter();
+  if (error) return error;
+
   try {
-    const session = await getServerSession()
-    if (!session || session.user.role !== UserRole.RECRUITER) {
-      return NextResponse.json<ApiResponse>(
-        { success: false, error: 'Unauthorized' },
-        { status: 403 }
-      )
-    }
+    const [totalCodes, totalUsages, totalApplications, hiredCount] = await Promise.all([
+      prisma.referralCode.count({ where: { recruiterId: session.user.id } }),
+      prisma.referralUsage.count({ where: { code: { recruiterId: session.user.id } } }),
+      prisma.application.count({ where: { recruiterId: session.user.id } }),
+      prisma.application.count({ where: { recruiterId: session.user.id, stage: 'HIRED' } }),
+    ]);
 
-    const [
-      recruiterProfile,
+    const conversionRate = totalApplications > 0
+      ? Math.round((hiredCount / totalApplications) * 100)
+      : 0;
+
+    // Applications over time (last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const recentApps = await prisma.application.findMany({
+      where: { recruiterId: session.user.id, appliedAt: { gte: thirtyDaysAgo } },
+      select: { appliedAt: true },
+    });
+    const appMap = new Map<string, number>();
+    recentApps.forEach((a) => {
+      const key = a.appliedAt.toISOString().slice(0, 10);
+      appMap.set(key, (appMap.get(key) ?? 0) + 1);
+    });
+    const applicationsOverTime = Array.from(appMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, count]) => ({ date, count }));
+
+    // Code performance
+    const codes = await prisma.referralCode.findMany({
+      where: { recruiterId: session.user.id },
+      include: {
+        _count: { select: { usages: true } },
+        usages: { select: { candidateId: true } },
+      },
+    });
+    const candidateIds = codes.flatMap((c) => c.usages.map((u) => u.candidateId));
+    const appsByCandidates = candidateIds.length > 0
+      ? await prisma.application.count({ where: { candidateId: { in: candidateIds }, recruiterId: session.user.id } })
+      : 0;
+
+    const codePerformance = codes.map((c) => ({
+      code: c.code,
+      usages: c._count.usages,
+      applications: appsByCandidates,
+    }));
+
+    return apiResponse({
       totalCodes,
-      activeCodes,
+      totalUsages,
       totalApplications,
-      applicationsByStageRaw,
-      recentApplications,
-    ] = await Promise.all([
-      prisma.recruiterProfile.findUnique({
-        where: { userId: session.user.id },
-      }),
-      prisma.referralCode.count({
-        where: { recruiterId: session.user.id },
-      }),
-      prisma.referralCode.count({
-        where: {
-          recruiterId: session.user.id,
-          isActive: true,
-          OR: [
-            { expiresAt: null },
-            { expiresAt: { gt: new Date() } },
-          ],
-        },
-      }),
-      prisma.application.count({
-        where: { recruiterId: session.user.id },
-      }),
-      prisma.application.groupBy({
-        by: ['stage'],
-        where: { recruiterId: session.user.id },
-        _count: { stage: true },
-      }),
-      prisma.application.findMany({
-        where: { recruiterId: session.user.id },
-        take: 10,
-        orderBy: { appliedAt: 'desc' },
-        include: {
-          job: { include: { company: { select: { name: true } } } },
-          candidate: { select: { name: true, email: true } },
-        },
-      }),
-    ])
-
-    const applicationsByStage = applicationsByStageRaw.reduce(
-      (acc, item) => {
-        acc[item.stage] = item._count.stage
-        return acc
-      },
-      {} as Record<string, number>
-    )
-
-    // Monthly applications for the last 6 months
-    const sixMonthsAgo = new Date()
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
-
-    const monthlyRaw = await prisma.application.findMany({
-      where: {
-        recruiterId: session.user.id,
-        appliedAt: { gte: sixMonthsAgo },
-      },
-      select: { appliedAt: true, stage: true },
-    })
-
-    const monthlyMap = new Map<string, number>()
-    monthlyRaw.forEach((app) => {
-      const key = app.appliedAt.toISOString().slice(0, 7)
-      monthlyMap.set(key, (monthlyMap.get(key) || 0) + 1)
-    })
-
-    const monthlyApplications = Array.from(monthlyMap.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([month, count]) => ({ month, count }))
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        totalReferrals: recruiterProfile?.totalReferrals || 0,
-        totalHires: recruiterProfile?.totalHires || 0,
-        activeCodes,
-        totalCodes,
-        totalApplications,
-        applicationsByStage,
-        monthlyApplications,
-        recentApplications,
-      },
-    })
-  } catch (error) {
-    console.error('Recruiter analytics GET error:', error)
-    return NextResponse.json<ApiResponse>(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    )
+      totalHires: hiredCount,
+      conversionRate,
+      applicationsOverTime,
+      codePerformance,
+    });
+  } catch (err) {
+    console.error('[analytics/recruiter GET]', err);
+    return apiError('Internal server error', 500);
   }
 }
