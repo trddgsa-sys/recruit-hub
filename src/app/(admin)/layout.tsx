@@ -2,18 +2,24 @@
 import { useSession } from 'next-auth/react';
 import { DashboardLayout } from '@/components/layouts/DashboardLayout';
 import { PageLoader } from '@/components/ui/Spinner';
+import { LayoutDashboard, FileText, Users, Building2, Briefcase, UserCheck, BarChart3 } from 'lucide-react';
+
+const adminNav = [
+  { label: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
+  { label: 'Applications', href: '/admin/applications', icon: FileText },
+  { label: 'Candidates', href: '/admin/candidates', icon: Users },
+  { label: 'Companies', href: '/admin/companies', icon: Building2 },
+  { label: 'Jobs', href: '/admin/jobs', icon: Briefcase },
+  { label: 'Recruiters', href: '/admin/recruiters', icon: UserCheck },
+  { label: 'Reports', href: '/admin/reports', icon: BarChart3 },
+];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   if (status === 'loading') return <PageLoader />;
-  if (!session) return null;
 
   return (
-    <DashboardLayout
-      role="ADMIN"
-      userName={session.user.name}
-      userEmail={session.user.email}
-    >
+    <DashboardLayout sidebarItems={adminNav} sidebarTitle="Admin">
       {children}
     </DashboardLayout>
   );
